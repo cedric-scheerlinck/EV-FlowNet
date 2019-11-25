@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import os
 import time
+import shutil
 
 import tensorflow as tf
 import numpy as np
@@ -30,6 +31,11 @@ def test(sess,
          timestamp_loader):
     if args.output_folder is not None:
         args.save_test_output = True
+        plot_folder = os.path.join(args.output_folder, 'plot')
+        flow_folder = os.path.join(args.output_folder, 'flow')
+        vis_folder = os.path.join(args.output_folder, 'vis')
+        for folder in [plot_folder, flow_folder, vis_folder]:
+            os.makedirs(folder)
     global_step = tf.train.get_or_create_global_step()
     with tf.variable_scope('vs'):
         flow_dict = model(event_image_loader,
@@ -53,9 +59,9 @@ def test(sess,
     min_flow_sum = 0
     iters = 0
     
-    if args.test_plot:
-        import cv2
-        cv2.namedWindow('EV-FlowNet Results', cv2.WINDOW_NORMAL)
+    # if args.test_plot:
+    #     import cv2
+    #     cv2.namedWindow('EV-FlowNet Results', cv2.WINDOW_NORMAL)
 
     if args.gt_path:
         print("Loading ground truth {}".format(args.gt_path))
@@ -140,7 +146,6 @@ def test(sess,
             AEE_sum += AEE
             percent_AEE_sum += percent_AEE
             
-        iters += 1
         if iters % 100 == 0:
             print('-------------------------------------------------------')
             print('Iter: {}, time: {:f}, run time: {:.3f}s\n'
@@ -154,7 +159,7 @@ def test(sess,
                               n_points))
 
         # Prep outputs for nice visualization.
-        if args.test_plot:
+        if args.test_plot and args.save_test_output:
             pred_flow_rgb = flow_viz_np(pred_flow[..., 0], pred_flow[..., 1])
             pred_flow_rgb = drawImageTitle(pred_flow_rgb, 'Predicted Flow')
             
@@ -196,35 +201,51 @@ def test(sess,
             bottom_cat = np.concatenate([event_time_image, errors, gt_flow_rgb], axis=1)
             cat = np.concatenate([top_cat, bottom_cat], axis=0)
             cat = cat.astype(np.uint8)
-            cv2.imshow('EV-FlowNet Results', cat)
-            cv2.waitKey(1)
+            plot_path = os.path.join(plot_folder, 'plot_{:010d}.png'.format(iters))
+            cv2.imwrite(plot_path, cat)
+            # cv2.imshow('EV-FlowNet Results', cat)
+            # cv2.waitKey(1)
+        if args.save_test_output:
+            output_dict = {
+                    'output_flows': output_flow,
+                    'event_images': event_image,
+                    'time_start': time_start,
+                    'time_end': time_end}
+            if args.gt_path:
+                fname = 'output_gt_{:010d}.npz'.format(iters)
+            else:
+                fname = 'output_{:010d}.npz'.format(iters)
+
+
+                output_path = os.path.join(flow_folder, fname)
+                np.savez(output_path
+                         output_flows=np.stack(output_flow_list, axis=0),
+                         gt_flows=np.stack(gt_flow_list, axis=0),
+                         event_images=np.stack(event_image_list, axis=0),
+                         time_start=np.stack(time_start_list, axis=0),
+                         time_end=np.stack(time_end_list, axis=0))
+            else:
+                print('Saving data to {}_output.npz'.format(args.test_sequence))
+                np.savez('{}_output.npz'.format(args.test_sequence),
+                         output_flows=np.stack(output_flow_list, axis=0),
+                         event_images=np.stack(event_image_list, axis=0),
+                         time_start=np.stack(time_start_list, axis=0),
+                         time_end=np.stack(time_end_list, axis=0))
             
+        iters += 1
+
     print('Testing done. ')
     if args.gt_path:
         print('mean AEE {:02f}, mean %AEE {:02f}'
               .format(AEE_sum / iters, 
                       percent_AEE_sum / iters))
-    if args.save_test_output:
-        if args.gt_path:
-            print('Saving data to {}_output_gt.npz'.format(args.test_sequence))
-            np.savez('{}_output_gt.npz'.format(args.test_sequence),
-                     output_flows=np.stack(output_flow_list, axis=0),
-                     gt_flows=np.stack(gt_flow_list, axis=0),
-                     event_images=np.stack(event_image_list, axis=0),
-                     time_start=np.stack(time_start_list, axis=0),
-                     time_end=np.stack(time_end_list, axis=0))
-        else:
-            print('Saving data to {}_output.npz'.format(args.test_sequence))
-            np.savez('{}_output.npz'.format(args.test_sequence),
-                     output_flows=np.stack(output_flow_list, axis=0),
-                     event_images=np.stack(event_image_list, axis=0),
-                     time_start=np.stack(time_start_list, axis=0),
-                     time_end=np.stack(time_end_list, axis=0))
 
     coord.request_stop()
 
 def main():        
     args = configs()
+    if args.save_test_output and args.output_folder is None:
+        args.output_folder = './'  # preserve default behaviour
     args.load_path = tf.train.latest_checkpoint(os.path.join(args.load_path,
                                                              args.training_instance))
 
