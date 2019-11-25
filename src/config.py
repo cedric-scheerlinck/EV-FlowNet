@@ -71,6 +71,10 @@ def configs():
     parser.add_argument('--save_test_output',
                         action='store_true',
                         help='If true, output flow will be saved to a npz file.')
+    parser.add_argument('--output_folder',
+                        default=None,
+                        type=str,
+                        help='Folder to save output')
 
     args = parser.parse_args()
     return args

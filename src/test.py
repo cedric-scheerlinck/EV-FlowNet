@@ -28,6 +28,8 @@ def test(sess,
          prev_image_loader,
          next_image_loader,
          timestamp_loader):
+    if args.output_folder is not None:
+        args.save_test_output = True
     global_step = tf.train.get_or_create_global_step()
     with tf.variable_scope('vs'):
         flow_dict = model(event_image_loader,
