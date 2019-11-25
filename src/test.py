@@ -71,6 +71,8 @@ def test(sess,
         output_flow_list = []
         gt_flow_list = []
         event_image_list = []
+        time_start_list = []
+        time_end_list = []
         
     while not coord.should_stop():
         start_time = time.time()
@@ -101,7 +103,9 @@ def test(sess,
 
         if args.save_test_output:
             output_flow_list.append(pred_flow)
-            event_image_list.append(event_count_image)
+            event_image_list.append(event_image)
+            time_start_list.append(image_timestamps[0][0])
+            time_end_list.append(image_timestamps[0][1])
         
         if args.gt_path:
             U_gt, V_gt = estimate_corresponding_gt_flow(U_gt_all, V_gt_all,
@@ -204,12 +208,16 @@ def test(sess,
             np.savez('{}_output_gt.npz'.format(args.test_sequence),
                      output_flows=np.stack(output_flow_list, axis=0),
                      gt_flows=np.stack(gt_flow_list, axis=0),
-                     event_images=np.stack(event_image_list, axis=0))
+                     event_images=np.stack(event_image_list, axis=0),
+                     time_start=np.stack(time_start_list, axis=0),
+                     time_end=np.stack(time_end_list, axis=0))
         else:
             print('Saving data to {}_output.npz'.format(args.test_sequence))
             np.savez('{}_output.npz'.format(args.test_sequence),
                      output_flows=np.stack(output_flow_list, axis=0),
-                     event_images=np.stack(event_image_list, axis=0))
+                     event_images=np.stack(event_image_list, axis=0),
+                     time_start=np.stack(time_start_list, axis=0),
+                     time_end=np.stack(time_end_list, axis=0))
 
     coord.request_stop()
 
