@@ -230,13 +230,17 @@ def test(sess,
 def main():        
     args = configs()
     args.output_folder = args.test_sequence
+    if not ('indoor' in args.test_sequence or 'outdoor' in args.test_sequence):
+        args.image_width = 160
+        args.image_height = 160
+        print('Changed image width and height to: {} / {}'.format(args.image_width, args.image_height))
     if os.path.isdir(args.output_folder):
         shutil.rmtree(args.output_folder)
     os.makedirs(os.path.join(args.output_folder, 'vis'))
-    if not args.gt_path:
-        args.gt_path = os.path.join(os.environ['MVSEC'],
-                                    'gt_flow',
-                                    '{}_gt_flow_dist.npz'.format(args.test_sequence))
+    # if not args.gt_path:
+    #     args.gt_path = os.path.join(os.environ['MVSEC'],
+    #                                 'gt_flow',
+    #                                 '{}_gt_flow_dist.npz'.format(args.test_sequence))
     args.load_path = tf.train.latest_checkpoint(os.path.join(args.load_path,
                                                              args.training_instance))
 
