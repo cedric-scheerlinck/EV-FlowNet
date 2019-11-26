@@ -63,6 +63,6 @@ def flow_viz_np(flow_x, flow_y):
     hsv[:, :, 0] = ang
     hsv[:, :, 1] = 255
     hsv[:, :, 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
-    flow_rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
-    return flow_rgb
+    flow_bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+    return flow_bgr
 
