@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 import os
 import time
+import shutil
+import subprocess
 
 import tensorflow as tf
 import numpy as np
@@ -53,7 +55,7 @@ def test(sess,
     
     if args.test_plot:
         import cv2
-        cv2.namedWindow('EV-FlowNet Results', cv2.WINDOW_NORMAL)
+   #     cv2.namedWindow('EV-FlowNet Results', cv2.WINDOW_NORMAL)
 
     if args.gt_path:
         print("Loading ground truth {}".format(args.gt_path))
@@ -138,19 +140,6 @@ def test(sess,
             AEE_sum += AEE
             percent_AEE_sum += percent_AEE
             
-        iters += 1
-        if iters % 100 == 0:
-            print('-------------------------------------------------------')
-            print('Iter: {}, time: {:f}, run time: {:.3f}s\n'
-                  'Mean max flow: {:.2f}, mean min flow: {:.2f}'
-                  .format(iters, image_timestamps[0][0], network_duration,
-                          max_flow_sum / iters, min_flow_sum / iters))
-            if args.gt_path:
-                print('Mean AEE: {:.2f}, mean %AEE: {:.2f}, # pts: {:.2f}'
-                      .format(AEE_sum / iters,
-                              percent_AEE_sum / iters,
-                              n_points))
-
         # Prep outputs for nice visualization.
         if args.test_plot:
             pred_flow_rgb = flow_viz_np(pred_flow[..., 0], pred_flow[..., 1])
@@ -194,8 +183,22 @@ def test(sess,
             bottom_cat = np.concatenate([event_time_image, errors, gt_flow_rgb], axis=1)
             cat = np.concatenate([top_cat, bottom_cat], axis=0)
             cat = cat.astype(np.uint8)
-            cv2.imshow('EV-FlowNet Results', cat)
-            cv2.waitKey(1)
+            cv2.imwrite(os.path.join(args.output_folder, 'vis', 'plot_{:010d}.png'.format(iters)), cat)
+            # cv2.imshow('EV-FlowNet Results', cat)
+            # cv2.waitKey(1)
+        iters += 1
+        if iters % 100 == 0:
+            print('-------------------------------------------------------')
+            print('Iter: {}, time: {:f}, run time: {:.3f}s\n'
+                  'Mean max flow: {:.2f}, mean min flow: {:.2f}'
+                  .format(iters, image_timestamps[0][0], network_duration,
+                          max_flow_sum / iters, min_flow_sum / iters))
+            if args.gt_path:
+                print('Mean AEE: {:.2f}, mean %AEE: {:.2f}, # pts: {:.2f}'
+                      .format(AEE_sum / iters,
+                              percent_AEE_sum / iters,
+                              n_points))
+
             
     print('Testing done. ')
     if args.gt_path:
@@ -204,16 +207,19 @@ def test(sess,
                       percent_AEE_sum / iters))
     if args.save_test_output:
         if args.gt_path:
-            print('Saving data to {}_output_gt.npz'.format(args.test_sequence))
-            np.savez('{}_output_gt.npz'.format(args.test_sequence),
-                     output_flows=np.stack(output_flow_list, axis=0),
-                     gt_flows=np.stack(gt_flow_list, axis=0),
-                     event_images=np.stack(event_image_list, axis=0),
-                     time_start=np.stack(time_start_list, axis=0),
-                     time_end=np.stack(time_end_list, axis=0))
-        else:
-            print('Saving data to {}_output.npz'.format(args.test_sequence))
-            np.savez('{}_output.npz'.format(args.test_sequence),
+            try:
+                print('Saving data to {}/{}_output_gt.npz'.format(args.output_folder, args.test_sequence))
+                np.savez(os.path.join(args.output_folder, '{}_output_gt.npz'.format(args.test_sequence)),
+                         output_flows=np.stack(output_flow_list, axis=0),
+                         gt_flows=np.stack(gt_flow_list, axis=0),
+                         event_images=np.stack(event_image_list, axis=0),
+                         time_start=np.stack(time_start_list, axis=0),
+                         time_end=np.stack(time_end_list, axis=0))
+            except:
+                args.gt_path = False
+        if not args.gt_path:
+            print('Saving data to {}/{}_output.npz'.format(args.output_folder, args.test_sequence))
+            np.savez(os.path.join(args.output_folder, '{}_output.npz'.format(args.test_sequence)),
                      output_flows=np.stack(output_flow_list, axis=0),
                      event_images=np.stack(event_image_list, axis=0),
                      time_start=np.stack(time_start_list, axis=0),
@@ -223,6 +229,14 @@ def test(sess,
 
 def main():        
     args = configs()
+    args.output_folder = args.test_sequence
+    if os.path.isdir(args.output_folder):
+        shutil.rmtree(args.output_folder)
+    os.makedirs(os.path.join(args.output_folder, 'vis'))
+    if not args.gt_path:
+        args.gt_path = os.path.join(os.environ['MVSEC'],
+                                    'gt_flow',
+                                    '{}_gt_flow_dist.npz'.format(args.test_sequence))
     args.load_path = tf.train.latest_checkpoint(os.path.join(args.load_path,
                                                              args.training_instance))
 
@@ -250,6 +264,11 @@ def main():
          next_image_loader,
          timestamp_loader)
     sess.close()
+
+    ffmpeg = ['ffmpeg', '-y', '-pattern_type', 'glob', '-i',
+              os.path.join(args.output_folder, 'vis', '*.png'),
+              os.path.join(args.output_folder, 'vis.mp4')]
+    subprocess.check_output(ffmpeg)
 
 
 if __name__ == "__main__":
