@@ -2,6 +2,7 @@
 import os
 import time
 import shutil
+import subprocess
 
 import tensorflow as tf
 import numpy as np
@@ -29,6 +30,10 @@ def test(sess,
          prev_image_loader,
          next_image_loader,
          timestamp_loader):
+    if not args.output_folder:
+        args.output_folder = args.test_sequence
+    if os.path.isdir(args.output_folder):
+        shutil.rmtree(args.output_folder)
     if args.output_folder is not None:
         args.save_test_output = True
         plot_folder = os.path.join(args.output_folder, 'plot')
@@ -59,9 +64,9 @@ def test(sess,
     min_flow_sum = 0
     iters = 0
     
-    # if args.test_plot:
-    #     import cv2
-    #     cv2.namedWindow('EV-FlowNet Results', cv2.WINDOW_NORMAL)
+    if args.test_plot:
+        import cv2
+   #     cv2.namedWindow('EV-FlowNet Results', cv2.WINDOW_NORMAL)
 
     if args.gt_path:
         print("Loading ground truth {}".format(args.gt_path))
@@ -146,22 +151,10 @@ def test(sess,
             AEE_sum += AEE
             percent_AEE_sum += percent_AEE
             
-        if iters % 100 == 0:
-            print('-------------------------------------------------------')
-            print('Iter: {}, time: {:f}, run time: {:.3f}s\n'
-                  'Mean max flow: {:.2f}, mean min flow: {:.2f}'
-                  .format(iters, image_timestamps[0][0], network_duration,
-                          max_flow_sum / iters, min_flow_sum / iters))
-            if args.gt_path:
-                print('Mean AEE: {:.2f}, mean %AEE: {:.2f}, # pts: {:.2f}'
-                      .format(AEE_sum / iters,
-                              percent_AEE_sum / iters,
-                              n_points))
-
         # Prep outputs for nice visualization.
         if args.test_plot and args.save_test_output:
-            pred_flow_rgb = flow_viz_np(pred_flow[..., 0], pred_flow[..., 1])
-            pred_flow_rgb = drawImageTitle(pred_flow_rgb, 'Predicted Flow')
+            pred_flow_bgr = flow_viz_np(pred_flow[..., 0], pred_flow[..., 1])
+            pred_flow_bgr = drawImageTitle(pred_flow_bgr, 'Predicted Flow')
             
             event_time_image = np.squeeze(np.amax(event_image[..., 2:], axis=-1))
             event_time_image = (event_time_image * 255 / event_time_image.max()).astype(np.uint8)
@@ -177,8 +170,8 @@ def test(sess,
 
             prev_image = drawImageTitle(prev_image, 'Grayscale Image')
             
-            gt_flow_rgb = np.zeros(pred_flow_rgb.shape)
-            errors = np.zeros(pred_flow_rgb.shape)
+            gt_flow_rgb = np.zeros(pred_flow_bgr.shape)
+            errors = np.zeros(pred_flow_bgr.shape)
 
             gt_flow_rgb = drawImageTitle(gt_flow_rgb, 'GT Flow - No GT')
             errors = drawImageTitle(errors, 'Flow Error - No GT')
@@ -197,55 +190,45 @@ def test(sess,
                 gt_flow_rgb = drawImageTitle(gt_flow_rgb, 'GT Flow')
                 errors= drawImageTitle(errors, 'Flow Error')
                 
-            top_cat = np.concatenate([event_count_image, prev_image, pred_flow_rgb], axis=1)
+            top_cat = np.concatenate([event_count_image, prev_image, pred_flow_bgr], axis=1)
             bottom_cat = np.concatenate([event_time_image, errors, gt_flow_rgb], axis=1)
             cat = np.concatenate([top_cat, bottom_cat], axis=0)
             cat = cat.astype(np.uint8)
             plot_path = os.path.join(plot_folder, 'plot_{:010d}.png'.format(iters))
             cv2.imwrite(plot_path, cat)
+            vis_path = os.path.join(vis_folder, 'flow_{:010d}.png'.format(iters))
+            cv2.imwrite(vis_path, pred_flow_bgr)
             # cv2.imshow('EV-FlowNet Results', cat)
             # cv2.waitKey(1)
         if args.save_test_output:
-            output_dict = {
-                    'output_flows': output_flow,
-                    'event_images': event_image,
-                    'time_start': time_start,
-                    'time_end': time_end}
-            if args.gt_path:
-                fname = 'output_gt_{:010d}.npz'.format(iters)
-            else:
-                fname = 'output_{:010d}.npz'.format(iters)
+            flow_path = os.path.join(flow_folder, 'flow_{:010d}.npy'.format(iters))
+            np.save(flow_path, pred_flow)
 
-
-                output_path = os.path.join(flow_folder, fname)
-                np.savez(output_path
-                         output_flows=np.stack(output_flow_list, axis=0),
-                         gt_flows=np.stack(gt_flow_list, axis=0),
-                         event_images=np.stack(event_image_list, axis=0),
-                         time_start=np.stack(time_start_list, axis=0),
-                         time_end=np.stack(time_end_list, axis=0))
-            else:
-                print('Saving data to {}_output.npz'.format(args.test_sequence))
-                np.savez('{}_output.npz'.format(args.test_sequence),
-                         output_flows=np.stack(output_flow_list, axis=0),
-                         event_images=np.stack(event_image_list, axis=0),
-                         time_start=np.stack(time_start_list, axis=0),
-                         time_end=np.stack(time_end_list, axis=0))
-            
         iters += 1
-
+        if iters % 100 == 0:
+            print('-------------------------------------------------------')
+            print('Iter: {}, time: {:f}, run time: {:.3f}s\n'
+                  'Mean max flow: {:.2f}, mean min flow: {:.2f}'
+                  .format(iters, image_timestamps[0][0], network_duration,
+                          max_flow_sum / iters, min_flow_sum / iters))
+            if args.gt_path:
+                print('Mean AEE: {:.2f}, mean %AEE: {:.2f}, # pts: {:.2f}'
+                      .format(AEE_sum / iters,
+                              percent_AEE_sum / iters,
+                              n_points))
     print('Testing done. ')
     if args.gt_path:
         print('mean AEE {:02f}, mean %AEE {:02f}'
               .format(AEE_sum / iters, 
                       percent_AEE_sum / iters))
-
     coord.request_stop()
 
 def main():        
     args = configs()
-    if args.save_test_output and args.output_folder is None:
-        args.output_folder = './'  # preserve default behaviour
+    if not args.gt_path:
+        args.gt_path = os.path.join(os.environ['MVSEC'],
+                                    'gt_flow',
+                                    '{}_gt_flow_dist.npz'.format(args.test_sequence))
     args.load_path = tf.train.latest_checkpoint(os.path.join(args.load_path,
                                                              args.training_instance))
 
@@ -273,6 +256,11 @@ def main():
          next_image_loader,
          timestamp_loader)
     sess.close()
+
+    ffmpeg = ['ffmpeg', '-y', '-pattern_type', 'glob', '-i',
+              os.path.join(args.output_folder, 'vis', '*.png'),
+              os.path.join(args.output_folder, 'vis.mp4')]
+    subprocess.check_output(ffmpeg)
 
 
 if __name__ == "__main__":
