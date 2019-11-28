@@ -30,6 +30,17 @@ def test(sess,
          prev_image_loader,
          next_image_loader,
          timestamp_loader):
+    if not args.output_folder:
+        args.output_folder = args.test_sequence
+    if os.path.isdir(args.output_folder):
+        shutil.rmtree(args.output_folder)
+    if args.output_folder is not None:
+        args.save_test_output = True
+        plot_folder = os.path.join(args.output_folder, 'plot')
+        flow_folder = os.path.join(args.output_folder, 'flow')
+        vis_folder = os.path.join(args.output_folder, 'vis')
+        for folder in [plot_folder, flow_folder, vis_folder]:
+            os.makedirs(folder)
     global_step = tf.train.get_or_create_global_step()
     with tf.variable_scope('vs'):
         flow_dict = model(event_image_loader,
@@ -141,9 +152,9 @@ def test(sess,
             percent_AEE_sum += percent_AEE
             
         # Prep outputs for nice visualization.
-        if args.test_plot:
-            pred_flow_rgb = flow_viz_np(pred_flow[..., 0], pred_flow[..., 1])
-            pred_flow_rgb = drawImageTitle(pred_flow_rgb, 'Predicted Flow')
+        if args.test_plot and args.save_test_output:
+            pred_flow_bgr = flow_viz_np(pred_flow[..., 0], pred_flow[..., 1])
+            pred_flow_bgr = drawImageTitle(pred_flow_bgr, 'Predicted Flow')
             
             event_time_image = np.squeeze(np.amax(event_image[..., 2:], axis=-1))
             event_time_image = (event_time_image * 255 / event_time_image.max()).astype(np.uint8)
@@ -159,8 +170,8 @@ def test(sess,
 
             prev_image = drawImageTitle(prev_image, 'Grayscale Image')
             
-            gt_flow_rgb = np.zeros(pred_flow_rgb.shape)
-            errors = np.zeros(pred_flow_rgb.shape)
+            gt_flow_rgb = np.zeros(pred_flow_bgr.shape)
+            errors = np.zeros(pred_flow_bgr.shape)
 
             gt_flow_rgb = drawImageTitle(gt_flow_rgb, 'GT Flow - No GT')
             errors = drawImageTitle(errors, 'Flow Error - No GT')
@@ -179,13 +190,20 @@ def test(sess,
                 gt_flow_rgb = drawImageTitle(gt_flow_rgb, 'GT Flow')
                 errors= drawImageTitle(errors, 'Flow Error')
                 
-            top_cat = np.concatenate([event_count_image, prev_image, pred_flow_rgb], axis=1)
+            top_cat = np.concatenate([event_count_image, prev_image, pred_flow_bgr], axis=1)
             bottom_cat = np.concatenate([event_time_image, errors, gt_flow_rgb], axis=1)
             cat = np.concatenate([top_cat, bottom_cat], axis=0)
             cat = cat.astype(np.uint8)
-            cv2.imwrite(os.path.join(args.output_folder, 'vis', 'plot_{:010d}.png'.format(iters)), cat)
+            plot_path = os.path.join(plot_folder, 'plot_{:010d}.png'.format(iters))
+            cv2.imwrite(plot_path, cat)
+            vis_path = os.path.join(vis_folder, 'flow_{:010d}.png'.format(iters))
+            cv2.imwrite(vis_path, pred_flow_bgr)
             # cv2.imshow('EV-FlowNet Results', cat)
             # cv2.waitKey(1)
+        if args.save_test_output:
+            flow_path = os.path.join(flow_folder, 'flow_{:010d}.npy'.format(iters))
+            np.save(flow_path, pred_flow)
+
         iters += 1
         if iters % 100 == 0:
             print('-------------------------------------------------------')
@@ -198,33 +216,11 @@ def test(sess,
                       .format(AEE_sum / iters,
                               percent_AEE_sum / iters,
                               n_points))
-
-            
     print('Testing done. ')
     if args.gt_path:
         print('mean AEE {:02f}, mean %AEE {:02f}'
               .format(AEE_sum / iters, 
                       percent_AEE_sum / iters))
-    if args.save_test_output:
-        if args.gt_path:
-            try:
-                print('Saving data to {}/{}_output_gt.npz'.format(args.output_folder, args.test_sequence))
-                np.savez(os.path.join(args.output_folder, '{}_output_gt.npz'.format(args.test_sequence)),
-                         output_flows=np.stack(output_flow_list, axis=0),
-                         gt_flows=np.stack(gt_flow_list, axis=0),
-                         event_images=np.stack(event_image_list, axis=0),
-                         time_start=np.stack(time_start_list, axis=0),
-                         time_end=np.stack(time_end_list, axis=0))
-            except:
-                args.gt_path = False
-        if not args.gt_path:
-            print('Saving data to {}/{}_output.npz'.format(args.output_folder, args.test_sequence))
-            np.savez(os.path.join(args.output_folder, '{}_output.npz'.format(args.test_sequence)),
-                     output_flows=np.stack(output_flow_list, axis=0),
-                     event_images=np.stack(event_image_list, axis=0),
-                     time_start=np.stack(time_start_list, axis=0),
-                     time_end=np.stack(time_end_list, axis=0))
-
     coord.request_stop()
 
 def main():        
@@ -271,7 +267,11 @@ def main():
 
     ffmpeg = ['ffmpeg', '-y', '-pattern_type', 'glob', '-i',
               os.path.join(args.output_folder, 'vis', '*.png'),
-              os.path.join(args.output_folder, 'vis.mp4')]
+              os.path.join(args.output_folder, 'flow.mp4')]
+    subprocess.check_output(ffmpeg)
+    ffmpeg = ['ffmpeg', '-y', '-pattern_type', 'glob', '-i',
+              os.path.join(args.output_folder, 'plot', '*.png'),
+              os.path.join(args.output_folder, 'plot.mp4')]
     subprocess.check_output(ffmpeg)
 
 
