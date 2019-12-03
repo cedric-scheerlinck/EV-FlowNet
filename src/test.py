@@ -38,8 +38,9 @@ def test(sess,
         args.save_test_output = True
         plot_folder = os.path.join(args.output_folder, 'plot')
         flow_folder = os.path.join(args.output_folder, 'flow')
+        gt_flow_folder = os.path.join(args.output_folder, 'gt_flow')
         vis_folder = os.path.join(args.output_folder, 'vis')
-        for folder in [plot_folder, flow_folder, vis_folder]:
+        for folder in [plot_folder, flow_folder, gt_flow_folder, vis_folder]:
             os.makedirs(folder)
     global_step = tf.train.get_or_create_global_step()
     with tf.variable_scope('vs'):
@@ -170,10 +171,10 @@ def test(sess,
 
             prev_image = drawImageTitle(prev_image, 'Grayscale Image')
             
-            gt_flow_rgb = np.zeros(pred_flow_bgr.shape)
+            gt_flow_bgr = np.zeros(pred_flow_bgr.shape)
             errors = np.zeros(pred_flow_bgr.shape)
 
-            gt_flow_rgb = drawImageTitle(gt_flow_rgb, 'GT Flow - No GT')
+            gt_flow_bgr = drawImageTitle(gt_flow_bgr, 'GT Flow - No GT')
             errors = drawImageTitle(errors, 'Flow Error - No GT')
             
             if args.gt_path:
@@ -185,19 +186,21 @@ def test(sess,
                 if 'outdoor' in args.test_sequence:
                     errors[190:, :] = 0
                 
-                gt_flow_rgb = flow_viz_np(gt_flow[...,0], gt_flow[...,1])
+                gt_flow_bgr = flow_viz_np(gt_flow[...,0], gt_flow[...,1])
 
-                gt_flow_rgb = drawImageTitle(gt_flow_rgb, 'GT Flow')
+                gt_flow_bgr_title = drawImageTitle(gt_flow_bgr, 'GT Flow')
                 errors= drawImageTitle(errors, 'Flow Error')
                 
             top_cat = np.concatenate([event_count_image, prev_image, pred_flow_bgr], axis=1)
-            bottom_cat = np.concatenate([event_time_image, errors, gt_flow_rgb], axis=1)
+            bottom_cat = np.concatenate([event_time_image, errors, gt_flow_bgr_title], axis=1)
             cat = np.concatenate([top_cat, bottom_cat], axis=0)
             cat = cat.astype(np.uint8)
             plot_path = os.path.join(plot_folder, 'plot_{:010d}.png'.format(iters))
             cv2.imwrite(plot_path, cat)
             vis_path = os.path.join(vis_folder, 'flow_{:010d}.png'.format(iters))
             cv2.imwrite(vis_path, pred_flow_bgr)
+            gt_flow_path = os.path.join(gt_flow_folder, 'flow_{:010d}.png'.format(iters))
+            cv2.imwrite(gt_flow_path, gt_flow_bgr)
             # cv2.imshow('EV-FlowNet Results', cat)
             # cv2.waitKey(1)
         if args.save_test_output:
@@ -272,6 +275,10 @@ def main():
     ffmpeg = ['ffmpeg', '-y', '-pattern_type', 'glob', '-i',
               os.path.join(args.output_folder, 'plot', '*.png'),
               os.path.join(args.output_folder, 'plot.mp4')]
+    subprocess.check_output(ffmpeg)
+    ffmpeg = ['ffmpeg', '-y', '-pattern_type', 'glob', '-i',
+              os.path.join(args.output_folder, 'gt_flow', '*.png'),
+              os.path.join(args.output_folder, 'gt_flow.mp4')]
     subprocess.check_output(ffmpeg)
 
 
